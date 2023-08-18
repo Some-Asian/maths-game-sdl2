@@ -2,11 +2,11 @@
 
 TODO:
 - ~~Create this TODO list~~
-- add SDL2, SDL2-mixer, SDL2-ttf to the repo
-- make a screen
+- ~~add SDL2, SDL2-mixer, SDL2-ttf to the repo~~
+- ~~make a screen~~
 - import fonts u like, figure out how to print them to the screen
 - create the renderer, game, etc structs & enums
-- figure out keyboard inputs
+- ~~figure out keyboard inputs~~
 - figure out the game loop lol
 - figure out the difficulty mechanism
 - make the question generation algorithm
