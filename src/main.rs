@@ -5,6 +5,9 @@ use sdl2::rect::Rect;
 use sdl2::render::WindowCanvas;
 use std::time::Duration;
 
+mod q_gen;
+use q_gen::Equation;
+
 fn render(canvas: &mut WindowCanvas, color: Color) {
     canvas.set_draw_color(color);
     canvas.draw_rect(Rect::new(10, 10, 50, 90));
@@ -26,6 +29,7 @@ pub fn main() {
     let mut b: u8 = 0;
     'running: loop {
         // Events
+        break 'running
         for event in event_pump.poll_iter() {
             match event {
                 Event::Quit {..} |
@@ -43,7 +47,7 @@ pub fn main() {
                 }
                 _ => {}
             }
-        }
+        };
         // Update
 
         // Render
@@ -55,5 +59,12 @@ pub fn main() {
 
         // 60FPS
         ::std::thread::sleep(Duration::new(0, 1_000_000_000u32 / 60));
+    }
+    let mut t: Vec<Equation> = vec![];
+    for i in 1..=100 {
+        t.push(Equation::gen_equation(&mut rand::thread_rng(), Some(5)))
+    }
+    for w in t {
+        w.print()
     }
 }
