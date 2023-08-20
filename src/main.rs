@@ -60,11 +60,7 @@ pub fn main() {
         // 60FPS
         ::std::thread::sleep(Duration::new(0, 1_000_000_000u32 / 60));
     }
-    let mut t: Vec<Equation> = vec![];
-    for i in 1..=100 {
-        t.push(Equation::gen_equation(&mut rand::thread_rng(), Some(5)))
-    }
-    for w in t {
-        w.print()
-    }
+    let t = Equation::pick_equation(&mut rand::thread_rng(), 100, 3.0, false);
+    t.print();
+    println!("{}",t.est_difficulty())
 }
