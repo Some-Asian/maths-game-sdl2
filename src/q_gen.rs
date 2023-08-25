@@ -39,24 +39,28 @@ impl Equation {
     pub const DIGIT_DIFFICULTIES: [f64; 10] = 
     [0.03, 0.06, 0.09, 0.09, 0.07, 0.1, 0.13, 0.11, 0.08, 0.01];
 
-    pub fn gen_equation(rng: &mut ThreadRng, ballpark: Option<u32>) -> Self {
+    pub fn gen_equation(rng: &mut ThreadRng, ballpark: Option<u32>, allowed_ops: Option<Vec<Operations>>) -> Self {
         let target_difficulty: u32 = if let Some(n) = ballpark {
             n
         } else {
             rng.gen_range(1..=5)
         };
-
-        let mut possible_operators = vec![Operations::Add, Operations::Subtract, Operations::Multiply];
-        if target_difficulty >= 2 {
-            possible_operators.push(Operations::Divide);
+        let mut possible_operators: Vec<Operations>;
+        if let Some(v) = allowed_ops {
+            possible_operators = v;
         }
-        if target_difficulty >= 3 {
-            possible_operators.append(&mut vec![Operations::Square, Operations::Simplify]);
+        else {
+            possible_operators = vec![Operations::Add, Operations::Subtract, Operations::Multiply];
+            if target_difficulty >= 2 {
+                possible_operators.push(Operations::Divide);
+            }
+            if target_difficulty >= 3 {
+                possible_operators.append(&mut vec![Operations::Square, Operations::Simplify]);
+            }
+            if target_difficulty >= 4 {
+                possible_operators.append(&mut vec![Operations::Sqrt, Operations::Cube])
+            }
         }
-        if target_difficulty >= 4 {
-            possible_operators.append(&mut vec![Operations::Sqrt, Operations::Cube])
-        }
-
         let op = possible_operators.choose(rng).unwrap().clone();
         let mut temp_rhs: Option<u32> = None;
         const TEN: u32 = 10;
@@ -75,10 +79,15 @@ impl Equation {
             },
             Operations::Sqrt => {
                 let root: u32 = rng.gen_range(1..=bounds[(target_difficulty - 1)as usize]);
+                temp_rhs = Some(root);
                 Num_Type::Number(root.pow(2) as isize)
             },
             _ => todo!()
         };
+        if let Operations::Simplify = op {
+            let extra_num = rng.gen_range(1..bounds[(target_difficulty - 1)as usize]);
+            temp_rhs = Some(temp_rhs.unwrap() * extra_num as u32);
+        }
         let rhs = if let Some(n) = temp_rhs {
             Num_Type::Number(n as isize)
         } else { match (op, &lhs) {
@@ -96,11 +105,11 @@ impl Equation {
         }
     }
 
-    pub fn pick_equation(rng: &mut ThreadRng, sample_size: u32, target_difficulty: f64, strict: bool) -> Self {
+    pub fn pick_equation(rng: &mut ThreadRng, sample_size: u32, target_difficulty: f64, strict: bool, allowed_ops: Option<Vec<Operations>>) -> Self {
         let mut equation_sample: Vec<Equation> = vec![];
         let ballpark: Option<u32> = Some(target_difficulty.floor() as u32);
         for _ in 0..sample_size {
-            equation_sample.push(Equation::gen_equation(rng, ballpark))
+            equation_sample.push(Equation::gen_equation(rng, ballpark, allowed_ops.clone()))
         }
         let mut sample_closeness: Vec<(&Equation, f64)> = equation_sample.iter().map(|eq| {
             let est_diff = eq.est_difficulty();
@@ -181,7 +190,7 @@ impl Equation {
             Operations::Subtract => 0.5 + (lhs_string.len() as f64) * 0.25 + (rhs_string.len() as f64) * 0.3,
             Operations::Multiply => 0.8 + ((lhs_num as f64) * 0.09 + (rhs_num as f64) * 0.09).sqrt(),
             Operations::Divide => 0.8 + (lhs_string.len() as f64) * 0.45 + (lhs_string.len() - rhs_string.len()) as f64 * 0.65,
-            Operations::Simplify => 0.8 + (lhs_string.len() as f64) * 0.45 + (lhs_string.len() - rhs_string.len()) as f64 * 0.65,
+            Operations::Simplify => 0.8 + (lhs_string.len() as f64) * 0.45 + (lhs_string.len() as i32 - rhs_string.len() as i32).abs() as f64 * 0.65,
             Operations::Square => 0.85 + (lhs_num as f64) * 0.065,
             Operations::Cube => 1.05 + (lhs_num as f64) * 0.090,
             Operations::Sqrt => 1.95 + (lhs_string.len() as f64) * 0.75
@@ -222,9 +231,48 @@ impl Equation {
                 (&Num_Type::Ratio((a_n,a_d)), &Num_Type::Ratio((b_n,b_d))) => Num_Type::Ratio((a_n * b_d + b_n * a_d, a_d * b_d)),
                 _ => todo!()
             },
+            Operations::Subtract => match (&self.lhs, &self.rhs) {
+                (&Num_Type::Number(a), &Num_Type::Number(b)) => Num_Type::Number(a - b),
+                (&Num_Type::Ratio((a_n,a_d)), &Num_Type::Number(b)) => Num_Type::Ratio((a_n - a_d * b, a_d)),
+                (&Num_Type::Number(a), &Num_Type::Ratio((b_n,b_d))) => Num_Type::Ratio((b_n - b_d * a, b_d)),
+                (&Num_Type::Ratio((a_n,a_d)), &Num_Type::Ratio((b_n,b_d))) => Num_Type::Ratio((a_n * b_d - b_n * a_d, a_d * b_d)),
+                _ => todo!()
+            },
+            Operations::Multiply => match (&self.lhs, &self.rhs) {
+                (&Num_Type::Number(a), &Num_Type::Number(b)) => Num_Type::Number(a * b),
+                (&Num_Type::Ratio((a_n,a_d)), &Num_Type::Number(b)) => Num_Type::Ratio((a_n * b, a_d)),
+                (&Num_Type::Number(a), &Num_Type::Ratio((b_n,b_d))) => Num_Type::Ratio((b_n * a, b_d)),
+                (&Num_Type::Ratio((a_n,a_d)), &Num_Type::Ratio((b_n,b_d))) => Num_Type::Ratio((a_n * b_n, a_d * b_d)),
+                _ => todo!()
+            },
+            Operations::Divide => match (&self.lhs, &self.rhs) {
+                (&Num_Type::Number(a), &Num_Type::Number(b)) => Num_Type::Number(a/b),
+                (&Num_Type::Ratio((a_n,a_d)), &Num_Type::Number(b)) => Num_Type::Ratio((a_n, a_d * b)),
+                (&Num_Type::Number(a), &Num_Type::Ratio((b_n,b_d))) => Num_Type::Ratio((a * b_d, b_n)),
+                (&Num_Type::Ratio((a_n,a_d)), &Num_Type::Ratio((b_n,b_d))) => Num_Type::Ratio((a_n * b_d, b_n * a_d)),
+                _ => todo!()
+            },
+            Operations::Square => match &self.lhs {
+                &Num_Type::Number(a) => Num_Type::Number(a * a),
+                &Num_Type::Ratio((a_n, a_d)) => Num_Type::Ratio((a_n * a_n, a_d * a_d)),
+                _ => todo!()
+            },
+            Operations::Cube => match &self.lhs {
+                &Num_Type::Number(a) => Num_Type::Number(a * a * a),
+                &Num_Type::Ratio((a_n, a_d)) => Num_Type::Ratio((a_n * a_n * a_n, a_d * a_d * a_d)),
+                _ => todo!()
+            },
+            Operations::Sqrt => match (&self.lhs, &self.rhs) {
+                (&Num_Type::Number(_), &Num_Type::Number(ans)) => Num_Type::Number(ans),
+                (&Num_Type::Ratio(_), &Num_Type::Ratio((ans_n, ans_d))) => Num_Type::Ratio((ans_n, ans_d)),
+                _ => todo!()
+            },
+            Operations::Simplify => match (&self.lhs, &self.rhs) {
+                (&Num_Type::Number(a), &Num_Type::Number(b)) => Num_Type::Ratio((a, b)),
+                _ => todo!()
+            }
             _ => todo!()
         };
-
-        todo!()
+        Equation::simplify(answer)
     }
 }
