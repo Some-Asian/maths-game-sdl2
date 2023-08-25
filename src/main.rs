@@ -8,6 +8,8 @@ use std::time::Duration;
 mod q_gen;
 use q_gen::Equation;
 
+use crate::q_gen::Num_Type;
+
 fn render(canvas: &mut WindowCanvas, color: Color) {
     canvas.set_draw_color(color);
     canvas.draw_rect(Rect::new(10, 10, 50, 90));
@@ -62,5 +64,8 @@ pub fn main() {
     }
     let t = Equation::pick_equation(&mut rand::thread_rng(), 100, 3.0, false);
     t.print();
-    println!("{}",t.est_difficulty())
+    println!("{}",t.est_difficulty());
+
+    let q = Num_Type::Ratio((10110111,111));
+    println!("{:?}", Equation::simplify(q))
 }

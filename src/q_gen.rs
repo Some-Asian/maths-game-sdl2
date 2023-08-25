@@ -2,7 +2,7 @@ use rand::prelude::*;
 use rand::seq::SliceRandom;
 use std::vec::Vec;
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Copy)]
 pub enum Operations {
     Add,
     Subtract,
@@ -15,13 +15,14 @@ pub enum Operations {
 }
 
 #[derive(Debug, Clone)]
-pub enum Rhs_Type {
+pub enum Num_Type {
     Number(isize),
     Equation(Box<Equation>),
+    Ratio((isize, isize)),
     None,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Copy)]
 pub enum Ans_Type {
     Number(isize),
     Ratio((isize, isize))
@@ -29,9 +30,9 @@ pub enum Ans_Type {
 
 #[derive(Debug, Clone)]
 pub struct Equation {
-    pub lhs: isize,
+    pub lhs: Num_Type,
     pub op: Operations,
-    pub rhs: Rhs_Type,
+    pub rhs: Num_Type,
 }
 
 impl Equation {
@@ -60,33 +61,34 @@ impl Equation {
         let mut temp_rhs: Option<u32> = None;
         const TEN: u32 = 10;
         let bounds = vec![6, 12, 20, 50, 100];
-        let lhs: isize = match op {
+        let lhs: Num_Type = match op {
             Operations::Add | Operations::Subtract => {
-                rng.gen_range((TEN.pow(target_difficulty - 1)..=(TEN.pow(target_difficulty))))
+                Num_Type::Number(rng.gen_range((TEN.pow(target_difficulty - 1)..=(TEN.pow(target_difficulty)))) as isize)
             },
             Operations::Multiply | Operations::Square | Operations::Cube => {
-                rng.gen_range(1..=bounds[(target_difficulty - 1)as usize])
+                Num_Type::Number(rng.gen_range(1..=bounds[(target_difficulty - 1)as usize]) as isize)
             },
             Operations::Divide | Operations::Simplify => {
                 let right_hand = rng.gen_range(1..=bounds[(target_difficulty - 1)as usize]);
                 temp_rhs = Some(right_hand);
-                rng.gen_range(1..=bounds[(target_difficulty - 1)as usize]) * right_hand
+                Num_Type::Number((rng.gen_range(1..=bounds[(target_difficulty - 1)as usize]) * right_hand) as isize)
             },
             Operations::Sqrt => {
                 let root: u32 = rng.gen_range(1..=bounds[(target_difficulty - 1)as usize]);
-                root.pow(2)
-            }
-        } as isize;
+                Num_Type::Number(root.pow(2) as isize)
+            },
+            _ => todo!()
+        };
         let rhs = if let Some(n) = temp_rhs {
-            Rhs_Type::Number(n as isize)
-        } else { match op {
-            Operations::Add | Operations::Subtract => {
-                Rhs_Type::Number(rng.gen_range(1..=lhs) as isize)
+            Num_Type::Number(n as isize)
+        } else { match (op, &lhs) {
+            (Operations::Add | Operations::Subtract, &Num_Type::Number(n)) => {
+                Num_Type::Number(rng.gen_range(1..=n) as isize)
             },
-            Operations::Multiply => {
-                Rhs_Type::Number(rng.gen_range(1..=bounds[(target_difficulty - 1)as usize]) as isize)
+            (Operations::Multiply, _) => {
+                Num_Type::Number(rng.gen_range(1..=bounds[(target_difficulty - 1)as usize]) as isize)
             },
-            _ => {Rhs_Type::None}
+            _ => {Num_Type::None}
         }};
 
         Equation {
@@ -125,29 +127,39 @@ impl Equation {
 
     pub fn print(&self) {
         let right_hand = match self.rhs {
-            Rhs_Type::Number(n) => format!("{}", n),
+            Num_Type::Number(n) => format!("{}", n),
+            _ => format!("n")
+        };
+        let left_hand = match self.lhs {
+            Num_Type::Number(n) => format!("{}", n),
+            Num_Type::Ratio((a,b)) => format!("{}/{}", a, b),
             _ => format!("n")
         };
         match self.op {
-            Operations::Add => println!("{} + {}", self.lhs, right_hand),
-            Operations::Subtract => println!("{} - {}", self.lhs, right_hand),
-            Operations::Multiply => println!("{} x {}", self.lhs, right_hand),
-            Operations::Divide => println!("{} / {}", self.lhs, right_hand),
-            Operations::Simplify => println!("{} : {}", self.lhs, right_hand),
-            Operations::Square => println!("{}^2", self.lhs),
-            Operations::Cube => println!("{}^3", self.lhs),
-            Operations::Sqrt => println!("sqrt({})", self.lhs)
+            Operations::Add => println!("{} + {}", left_hand, right_hand),
+            Operations::Subtract => println!("{} - {}", left_hand, right_hand),
+            Operations::Multiply => println!("{} x {}", left_hand, right_hand),
+            Operations::Divide => println!("{} / {}", left_hand, right_hand),
+            Operations::Simplify => println!("{} : {}", left_hand, right_hand),
+            Operations::Square => println!("{}^2", left_hand),
+            Operations::Cube => println!("{}^3", left_hand),
+            Operations::Sqrt => println!("sqrt({})", left_hand)
         }
     }
 
     pub fn est_difficulty(&self) -> f64 {
-        let lhs_string = format!("{}", self.lhs);
-        let rhs_string = if let Rhs_Type::Number(n) = self.rhs {
+        let lhs_num = match self.lhs {
+            Num_Type::Number(n) => n,
+            _ => todo!()
+        };
+        let lhs_string = format!("{}", lhs_num);
+        
+        let rhs_string = if let Num_Type::Number(n) = self.rhs {
             format!("{}", n)
         } else {
             String::from("0")
         };
-        let rhs_num = if let Rhs_Type::Number(n) = self.rhs {
+        let rhs_num = if let Num_Type::Number(n) = self.rhs {
             n
         } else {
             0
@@ -167,14 +179,52 @@ impl Equation {
         difficulty_score += match self.op {
             Operations::Add => 0.45 + (lhs_string.len() + rhs_string.len()) as f64 * 0.25,
             Operations::Subtract => 0.5 + (lhs_string.len() as f64) * 0.25 + (rhs_string.len() as f64) * 0.3,
-            Operations::Multiply => 0.8 + ((self.lhs as f64) * 0.09 + (rhs_num as f64) * 0.09).sqrt(),
+            Operations::Multiply => 0.8 + ((lhs_num as f64) * 0.09 + (rhs_num as f64) * 0.09).sqrt(),
             Operations::Divide => 0.8 + (lhs_string.len() as f64) * 0.45 + (lhs_string.len() - rhs_string.len()) as f64 * 0.65,
             Operations::Simplify => 0.8 + (lhs_string.len() as f64) * 0.45 + (lhs_string.len() - rhs_string.len()) as f64 * 0.65,
-            Operations::Square => 0.85 + (self.lhs as f64) * 0.065,
-            Operations::Cube => 1.05 + (self.lhs as f64) * 0.090,
+            Operations::Square => 0.85 + (lhs_num as f64) * 0.065,
+            Operations::Cube => 1.05 + (lhs_num as f64) * 0.090,
             Operations::Sqrt => 1.95 + (lhs_string.len() as f64) * 0.75
         };
 
         difficulty_score
+    }
+
+    pub fn gcd(a: isize, b: isize) -> isize {
+        let mut n: isize = a.abs();
+        let mut m = b.abs();
+        while m != 0 {
+            if m < n {
+                std::mem::swap(&mut m, &mut n)
+            }
+            m %= n;
+        }
+        n
+    }
+    pub fn simplify(ratio: Num_Type) -> Num_Type {
+        if let Num_Type::Ratio((n,d)) = ratio {
+            let gcd = Equation::gcd(n, d);
+            if d/gcd == 1 {
+                return Num_Type::Number(n/gcd)
+            }
+            return Num_Type::Ratio((n/gcd,d/gcd))
+        } else {
+            return ratio
+        }
+    }
+
+    pub fn evaluate_equation(&self) -> Num_Type {
+        let answer: Num_Type = match self.op {
+            Operations::Add => match (&self.lhs, &self.rhs) {
+                (&Num_Type::Number(a), &Num_Type::Number(b)) => Num_Type::Number(a + b),
+                (&Num_Type::Ratio((a_n,a_d)), &Num_Type::Number(b)) => Num_Type::Ratio((a_n + a_d * b, a_d)),
+                (&Num_Type::Number(a), &Num_Type::Ratio((b_n,b_d))) => Num_Type::Ratio((b_n + b_d * a, b_d)),
+                (&Num_Type::Ratio((a_n,a_d)), &Num_Type::Ratio((b_n,b_d))) => Num_Type::Ratio((a_n * b_d + b_n * a_d, a_d * b_d)),
+                _ => todo!()
+            },
+            _ => todo!()
+        };
+
+        todo!()
     }
 }
